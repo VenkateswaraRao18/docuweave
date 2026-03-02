@@ -1,0 +1,27 @@
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docuweave"
+version = "0.1.1"
+description = "Layout-aware document parser for structured LLM-ready JSON"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+  { name="venkateswaraRao", email="mrvenky18@gmail.com" }
+]
+dependencies = [
+  "pydantic>=2.0",
+  "pymupdf>=1.23",
+  "tiktoken>=0.5"
+]
+requires-python = ">=3.9"
+keywords = ["pdf", "llm", "rag", "document parsing", "nlp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
