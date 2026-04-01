@@ -127,6 +127,17 @@ python -m unittest tests/test_core_logic.py tests/test_integrations.py -v
 
 Pull requests are welcome. Open an issue with a PDF sample when reporting parsing bugs.
 
+## Author
+
+- Venkateswara Rao Jannegorla
+- GitHub: [VenkateswaraRao18](https://github.com/VenkateswaraRao18)
+- Email: mrvenky18@gmail.com
+
+## Support
+
+- Report bugs or request features in [GitHub Issues](https://github.com/venkateswararao18/docuweave/issues)
+- For package publishing and releases, use semantic versioning and keep `README.md` synced with shipped CLI/API features
+
 ## License
 
 MIT
