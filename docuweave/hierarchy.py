@@ -45,6 +45,7 @@ def build_hierarchy(blocks: List[Block]) -> List[Section]:
 
     root_sections: List[Section] = []
     section_stack: List[Section] = []
+    intro_blocks: List[Block] = []
 
     # --------------------------------------------------------
     # Build hierarchy
@@ -86,5 +87,25 @@ def build_hierarchy(blocks: List[Block]) -> List[Section]:
         else:
             if section_stack:
                 section_stack[-1].add_block(block)
+            else:
+                intro_blocks.append(block)
+
+    if intro_blocks:
+        intro_section = Section(
+            id="section_intro",
+            title="Introduction",
+            level=0,
+            blocks=intro_blocks,
+        )
+        root_sections.insert(0, intro_section)
+
+    if not root_sections and blocks:
+        fallback_section = Section(
+            id="section_document",
+            title="Document",
+            level=0,
+            blocks=[b for b in blocks if b.type not in (BlockType.TITLE, BlockType.HEADING)],
+        )
+        return [fallback_section]
 
     return root_sections

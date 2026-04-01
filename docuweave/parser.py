@@ -1,159 +1,224 @@
 from __future__ import annotations
+from .block_cleaner import clean_blocks
 
-import fitz
 import uuid
 import re
+import fitz
 from typing import List
 
-# from models import Block, BlockType
-from docuweave.models import Block,BlockType
+from .models import Block
 
 
-# ============================================================
-# Utility Functions
-# ============================================================
+# -----------------------------
+# Bullet Detection
+# -----------------------------
 
-def is_mostly_upper(text: str) -> bool:
-    letters = [c for c in text if c.isalpha()]
-    if not letters:
-        return False
+BULLET_CHARS = ["•", "-", "*", "▪", "‣", "◦"]
 
-    uppercase_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
-    return uppercase_ratio > 0.7
+BULLET_PATTERN = re.compile(r"^[\-\*\•\▪\‣\◦]\s+")
 
 
-def is_noise_line(text: str) -> bool:
-    stripped = text.strip()
-
-    if len(stripped) < 3:
-        return True
-
-    if "...." in stripped:
-        return True
-
-    letters = [c for c in stripped if c.isalpha()]
-    if len(letters) == 0:
-        return True
-
-    return False
+def is_bullet(text: str) -> bool:
+    text = text.strip()
+    return bool(BULLET_PATTERN.match(text))
 
 
-def looks_like_sentence(text: str) -> bool:
-    """
-    Detect if text looks like normal sentence content.
-    """
-    if text.endswith((".", ",", ";", ":", "-")):
-        return True
-
-    # If contains many lowercase words, likely paragraph
-    words = text.split()
-    lowercase_words = [w for w in words if w.islower()]
-    if len(lowercase_words) > 3:
-        return True
-
-    return False
+def clean_text(text: str) -> str:
+    return text.strip().replace("\n", " ")
 
 
-def contains_too_many_symbols(text: str) -> bool:
-    symbols = re.findall(r"[^\w\s]", text)
-    return len(symbols) > 5
+# -----------------------------
+# Heading Scoring
+# -----------------------------
+
+def heading_score(text: str, font_size: float, median_font: float) -> int:
+
+    score = 0
+
+    if font_size > median_font:
+        score += 2
+
+    if text.isupper():
+        score += 1
+
+    if len(text) < 60:
+        score += 1
+
+    if text.endswith(":"):
+        score += 1
+
+    return score
 
 
-# ============================================================
-# Main Parser
-# ============================================================
+# -----------------------------
+# Merge PDF Lines → Paragraphs
+# -----------------------------
 
-def parse_pdf(file_path: str) -> List[Block]:
+def merge_lines(lines):
 
-    doc = fitz.open(file_path)
-    blocks: List[Block] = []
-    font_sizes: List[float] = []
+    merged = []
 
-    # -------------------------------
-    # PASS 1: Collect font sizes
-    # -------------------------------
-    for page_index in range(len(doc)):
-        page = doc[page_index]
-        page_dict = page.get_text("dict")
+    i = 0
 
-        for block in page_dict.get("blocks", []):
+    while i < len(lines):
+
+        current = lines[i]
+        text = current["text"]
+
+        j = i + 1
+
+        while j < len(lines):
+
+            next_line = lines[j]
+
+            same_font = abs(current["font_size"] - next_line["font_size"]) < 0.5
+            small_gap = abs(next_line["y"] - current["y"]) < 15
+            same_indent = abs(next_line["x"] - current["x"]) < 5
+
+            sentence_end = text.endswith((".", "?", "!", ":"))
+
+            if same_font and same_indent and small_gap and not sentence_end:
+                text += " " + next_line["text"]
+                j += 1
+            else:
+                break
+
+        merged.append(
+            {
+                "text": text,
+                "font_size": current["font_size"],
+                "page": current["page"],
+            }
+        )
+
+        i = j
+
+    return merged
+
+
+# -----------------------------
+# Fix Detached Bullets
+# -----------------------------
+
+def fix_detached_bullets(lines):
+
+    fixed = []
+
+    i = 0
+
+    while i < len(lines):
+
+        text = lines[i]["text"].strip()
+
+        if text in BULLET_CHARS and i + 1 < len(lines):
+
+            next_line = lines[i + 1]
+
+            next_line["text"] = text + " " + next_line["text"]
+
+            i += 1
+
+            continue
+
+        fixed.append(lines[i])
+
+        i += 1
+
+    return fixed
+
+
+# -----------------------------
+# Main PDF Parser
+# -----------------------------
+
+def parse_pdf(path: str) -> List[Block]:
+
+    doc = fitz.open(path)
+
+    lines = []
+
+    for page_index, page in enumerate(doc):
+
+        blocks = page.get_text("dict")["blocks"]
+
+        for block in blocks:
+
             if "lines" not in block:
                 continue
 
             for line in block["lines"]:
-                for span in line.get("spans", []):
-                    size = span.get("size")
-                    if size:
-                        font_sizes.append(size)
 
-    if not font_sizes:
-        doc.close()
-        return []
+                spans = line["spans"]
 
-    unique_sizes = sorted(set(font_sizes), reverse=True)
-    title_size = unique_sizes[0]
-    top_sizes = unique_sizes[:4]
+                text = "".join(span["text"] for span in spans).strip()
 
-    # -------------------------------
-    # PASS 2: Build Blocks
-    # -------------------------------
-    for page_index in range(len(doc)):
-        page = doc[page_index]
-        page_dict = page.get_text("dict")
-
-        for block in page_dict.get("blocks", []):
-            if "lines" not in block:
-                continue
-
-            for line in block["lines"]:
-                line_text = ""
-                font_size = None
-                font_name = None
-
-                for span in line.get("spans", []):
-                    line_text += span.get("text", "")
-
-                    if font_size is None:
-                        font_size = span.get("size")
-
-                    if font_name is None:
-                        font_name = span.get("font")
-
-                line_text = line_text.strip()
-
-                if not line_text:
+                if not text:
                     continue
 
-                # ---------------------------
-                # Classification
-                # ---------------------------
-                if font_size == title_size:
-                    block_type = BlockType.TITLE
+                font_size = spans[0]["size"]
+                x = spans[0]["origin"][0]
+                y = spans[0]["origin"][1]
 
-                elif (
-                    font_size in top_sizes
-                    and font_size >= 11
-                    and not is_noise_line(line_text)
-                    and not looks_like_sentence(line_text)
-                    and not contains_too_many_symbols(line_text)
-                    and len(line_text) < 100
-                ):
-                    block_type = BlockType.HEADING
-
-                else:
-                    block_type = BlockType.PARAGRAPH
-
-                parsed_block = Block(
-                    id=str(uuid.uuid4()),
-                    type=block_type,
-                    text=line_text,
-                    page=page_index + 1,
-                    bbox=line.get("bbox"),
-                    font_size=font_size,
-                    font_name=font_name,
+                lines.append(
+                    {
+                        "text": clean_text(text),
+                        "font_size": font_size,
+                        "page": page_index + 1,
+                        "x": x,
+                        "y": y,
+                    }
                 )
 
-                blocks.append(parsed_block)
+    if not lines:
+        return []
 
-    doc.close()
+    # -----------------------------
+    # Fix bullet-only lines
+    # -----------------------------
+
+    lines = fix_detached_bullets(lines)
+
+    # -----------------------------
+    # Compute median font
+    # -----------------------------
+
+    font_sizes = [l["font_size"] for l in lines]
+    median_font = sorted(font_sizes)[len(font_sizes) // 2]
+
+    # -----------------------------
+    # Merge lines into paragraphs
+    # -----------------------------
+
+    merged_lines = merge_lines(lines)
+
+    blocks: List[Block] = []
+
+    for line in merged_lines:
+
+        text = line["text"]
+
+        if is_bullet(text):
+            block_type = "list_item"
+
+        else:
+
+            score = heading_score(text, line["font_size"], median_font)
+
+            if score >= 3:
+                block_type = "heading"
+            else:
+                block_type = "paragraph"
+
+        blocks.append(
+            Block(
+                id=str(uuid.uuid4()),
+                type=block_type,
+                text=text,
+                page=line["page"],
+                font_size=line["font_size"],
+            )
+        )
+
+    
+    blocks = clean_blocks(blocks)
     return blocks

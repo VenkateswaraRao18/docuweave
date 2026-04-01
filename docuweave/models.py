@@ -14,6 +14,7 @@ class BlockType(str, Enum):
     HEADING = "heading"
     PARAGRAPH = "paragraph"
     LIST_ITEM = "list_item"
+    LIST = "list"
     TABLE = "table"
     HEADER = "header"
     FOOTER = "footer"
@@ -31,7 +32,10 @@ class Block(BaseModel):
 
     id: str
     type: BlockType
-    text: str
+    text: Optional[str] = None
+    items: Optional[List[str]] = None
+    # text: str
+    
 
     page: int
 

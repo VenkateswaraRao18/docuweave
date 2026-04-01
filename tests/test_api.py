@@ -1,4 +1,4 @@
-from api import parse
+from docuweave import parse
 
 doc = parse("sample.pdf")
 

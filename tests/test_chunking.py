@@ -1,6 +1,6 @@
-from parser import parse_pdf
-from hierarchy import build_hierarchy
-from chunking import build_chunks
+from docuweave.parser import parse_pdf
+from docuweave.hierarchy import build_hierarchy
+from docuweave.chunking import build_chunks
 
 blocks = parse_pdf("sample.pdf")
 sections = build_hierarchy(blocks)

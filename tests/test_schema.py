@@ -1,4 +1,4 @@
-from models import Block, BlockType, Document, DocumentMetadata
+from docuweave.models import Block, BlockType, Document, DocumentMetadata
 
 block = Block(
     id="b1",

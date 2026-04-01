@@ -1,169 +1,107 @@
 # DocuWeave
 
-**Layout-aware document parser that converts PDFs into structured, hierarchical, LLM-ready JSON.**
+**RAG document compiler for PDFs: layout-aware parsing -> section hierarchy -> token-aware chunks -> vector-ready outputs.**
 
-DocuWeave is designed specifically for Retrieval-Augmented Generation (RAG) pipelines.  
-Unlike simple PDF text extractors, it preserves layout structure, builds semantic hierarchy, and produces token-aware chunks optimized for embeddings.
+DocuWeave helps you convert raw PDFs into structured context that performs better in retrieval pipelines.
 
----
+## Why DocuWeave
 
-## 🚀 Why DocuWeave?
+Most basic PDF loaders return flat text and lose structure. DocuWeave preserves document shape so retrieval can be more accurate and explainable.
 
-Most PDF loaders:
-- Return raw text blobs
-- Ignore layout
-- Break section boundaries
-- Produce poor RAG chunks
+- Layout-aware block parsing using PyMuPDF
+- Automatic hierarchy construction from heading signals
+- Token-aware chunking for embedding workflows
+- Rich chunk metadata (`section_path`, page span, chunk links)
+- Export paths for Pinecone, Weaviate, and FAISS-style JSONL
+- LangChain and LlamaIndex-friendly adapters
 
-DocuWeave provides:
-
-✅ Deterministic layout-aware parsing  
-✅ Automatic section hierarchy detection  
-✅ Token-aware smart chunking  
-✅ Embedding-ready JSON output  
-✅ Clean Python API  
-✅ Lightweight & dependency-minimal  
-
----
-
-## 📦 Installation
+## Installation
 
 ```bash
 pip install docuweave
 ```
 
-Requires Python 3.9+
+Requires Python 3.9+.
 
----
+Install optional integration dependencies:
 
-## ⚡ Quick Start
+```bash
+pip install "docuweave[integrations]"
+```
+
+## Quick Start (Python)
 
 ```python
 from docuweave import parse
 
 doc = parse("sample.pdf")
 
-# Generate RAG-ready chunks
 chunks = doc.to_chunks(max_tokens=500)
-
-# Save structured JSON file
 doc.save_json("output.json")
+
+print(len(doc.get_sections()), len(chunks))
 ```
 
----
+## Quick Start (CLI)
 
-## 🧠 What Makes It Different?
-
-DocuWeave follows a deterministic pipeline:
-
-```
-PDF → Layout Blocks → Hierarchy → Token-Aware Chunks → Structured JSON
+```bash
+docuweave sample.pdf -o output.json --max-tokens 500
 ```
 
-It preserves:
+Vector export modes:
 
-- Section structure
-- Heading levels
-- Page numbers
-- Layout metadata
-- Token counts per chunk
+```bash
+docuweave sample.pdf --export pinecone -o pinecone_records.json
+docuweave sample.pdf --export weaviate -o weaviate_records.json
+docuweave sample.pdf --export faiss-jsonl -o faiss_records.jsonl
+```
 
----
+## Output Shape
 
-## 📄 Output JSON Structure
+Chunks include retrieval-friendly metadata:
 
 ```json
 {
-  "metadata": {
-    "source": "sample.pdf",
-    "total_pages": 120
-  },
-  "sections": [
-    {
-      "id": "...",
-      "title": "Chapter 1",
-      "level": 1,
-      "blocks": [...],
-      "subsections": [...]
-    }
-  ],
-  "chunks": [
-    {
-      "id": "...",
-      "text": "...",
-      "tokens": 487,
-      "section_title": "Chapter 1",
-      "section_level": 1,
-      "page_start": 3,
-      "page_end": 5
-    }
-  ]
+  "id": "...",
+  "text": "...",
+  "tokens": 487,
+  "section_title": "Chapter 1",
+  "section_path": "Chapter 1 > Background",
+  "section_level": 1,
+  "page_start": 3,
+  "page_end": 5,
+  "previous_chunk_id": "...",
+  "next_chunk_id": "..."
 }
 ```
 
----
+## Integrations
 
-## 🔥 Designed for RAG Pipelines
-
-DocuWeave optimizes for:
-
-- Vector database ingestion
-- Embedding generation
-- Section-aware retrieval
-- Metadata filtering
-- Explainable chunk origins
-
-Works well with:
-
-- OpenAI embeddings
-- HuggingFace models
-- Pinecone
-- Weaviate
-- FAISS
-- Chroma
-
----
-
-## 🏗 Architecture Overview
-
-DocuWeave follows a clean modular design:
-
-- `parser` → Layout extraction using PyMuPDF  
-- `hierarchy` → Font-size-based section tree builder  
-- `chunking` → Token-aware section-based chunk generator  
-- `exporter` → Structured JSON export  
-- `api` → Clean public interface  
-
-Deterministic first.  
-AI enrichment can be added later.
-
----
-
-## 🛠 Advanced Usage
-
-Custom token limit:
+Use adapters for common orchestration stacks:
 
 ```python
-doc.to_chunks(max_tokens=800)
+langchain_docs = doc.to_langchain(max_tokens=500)
+llama_nodes = doc.to_llamaindex(max_tokens=500)
 ```
 
-Access hierarchy:
+Use vector payload exporters:
 
 ```python
-sections = doc.get_sections()
+pinecone_records = doc.export_pinecone()
+weaviate_records = doc.export_weaviate()
+doc.export_faiss_jsonl("faiss_records.jsonl")
 ```
 
-Access flat blocks:
+## Architecture
 
-```python
-blocks = doc.get_blocks()
-```
+- `docuweave/parser.py` -> layout block extraction and cleanup
+- `docuweave/hierarchy.py` -> section tree construction
+- `docuweave/chunking.py` -> token-aware chunk generation
+- `docuweave/integrations.py` -> LangChain/LlamaIndex adapters
+- `docuweave/vector_exporters.py` -> vector DB payload builders
+- `docuweave/api.py` -> public API facade
 
----
-
-## 🧪 Development Setup
-
-Clone repository:
+## Development
 
 ```bash
 git clone https://github.com/venkateswararao18/docuweave.git
@@ -171,46 +109,24 @@ cd docuweave
 pip install -e .
 ```
 
-Run tests manually:
+Run logic-focused tests:
 
 ```bash
-python tests/test_api.py
+python -m unittest tests/test_core_logic.py tests/test_integrations.py -v
 ```
 
----
+## Roadmap
 
-## 📌 Roadmap
-
-Planned features:
-
-- DOCX support
-- HTML support
+- DOCX and HTML support
+- More robust heading detection across noisy PDFs
 - Table extraction improvements
-- Section path identifiers
-- CLI tool
-- Optional AI-enhanced semantic mode
-- Improved heading detection robustness
+- Optional semantic chunking mode
+- Benchmark suite and quality report
 
----
+## Contributing
 
-## 📄 License
+Pull requests are welcome. Open an issue with a PDF sample when reporting parsing bugs.
 
-MIT License
+## License
 
----
-
-## 👤 Author
-
-venkateswararao jannegorla 
-GitHub: https://github.com/venkateswararao18
-
----
-
-## ⭐ Contributing
-
-Pull requests welcome.  
-If you find a bug or improvement idea, open an issue.
-
----
-
-DocuWeave — Structured Documents for LLMs.
+MIT

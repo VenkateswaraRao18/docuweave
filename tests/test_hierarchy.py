@@ -1,5 +1,5 @@
-from parser import parse_pdf
-from hierarchy import build_hierarchy
+from docuweave.parser import parse_pdf
+from docuweave.hierarchy import build_hierarchy
 
 
 def print_section(section, indent=0):

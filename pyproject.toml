@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docuweave"
-version = "0.1.1"
+version = "0.1.2"
 description = "Layout-aware document parser for structured LLM-ready JSON"
 readme = "README.md"
 license = { text = "MIT" }
@@ -23,5 +23,14 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
+]
+
+[project.scripts]
+docuweave = "docuweave.cli:main"
+
+[project.optional-dependencies]
+integrations = [
+  "langchain-core>=0.2",
+  "llama-index-core>=0.10"
 ]
 

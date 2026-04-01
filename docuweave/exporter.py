@@ -20,6 +20,7 @@ def export_section(section: Section) -> Dict[str, Any]:
                 "id": block.id,
                 "type": block.type,
                 "text": block.text,
+                "items": block.items,
                 "page": block.page,
             }
             for block in section.blocks
