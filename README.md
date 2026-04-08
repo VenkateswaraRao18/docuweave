@@ -136,8 +136,6 @@ Pull requests are welcome. Open an issue with a PDF sample when reporting parsin
 ## Support
 
 - Report bugs or request features in [GitHub Issues](https://github.com/venkateswararao18/docuweave/issues)
-- For package publishing and releases, use semantic versioning and keep `README.md` synced with shipped CLI/API features
-
 ## License
 
 MIT
