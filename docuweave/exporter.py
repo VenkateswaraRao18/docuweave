@@ -10,25 +10,28 @@ from docuweave.models import Block,Document,Section
 # Recursive Section Export
 # ============================================================
 
+def _export_block(block: Block) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "id": block.id,
+        "type": block.type,
+        "page": block.page,
+    }
+    if block.text is not None:
+        out["text"] = block.text
+    if block.items is not None:
+        out["items"] = block.items
+    if block.font_size is not None:
+        out["font_size"] = block.font_size
+    return out
+
+
 def export_section(section: Section) -> Dict[str, Any]:
     return {
         "id": section.id,
         "title": section.title,
         "level": section.level,
-        "blocks": [
-            {
-                "id": block.id,
-                "type": block.type,
-                "text": block.text,
-                "items": block.items,
-                "page": block.page,
-            }
-            for block in section.blocks
-        ],
-        "subsections": [
-            export_section(subsection)
-            for subsection in section.subsections
-        ],
+        "blocks": [_export_block(b) for b in section.blocks],
+        "subsections": [export_section(s) for s in section.subsections],
     }
 
 

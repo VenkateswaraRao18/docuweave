@@ -148,4 +148,54 @@ def build_chunks(
         if index < len(chunks) - 1:
             chunk.next_chunk_id = chunks[index + 1].id
 
-    return [chunk.to_dict() for chunk in chunks]
+    chunk_dicts = [chunk.to_dict() for chunk in chunks]
+    return _merge_small_chunks(chunk_dicts, max_tokens, token_counter)
+
+
+# ============================================================
+# Post-processing: Merge consecutive under-filled chunks
+# ============================================================
+
+def _merge_small_chunks(
+    chunks: List[dict],
+    max_tokens: int,
+    token_counter: TokenCounter,
+) -> List[dict]:
+    """
+    Merge consecutive under-filled chunks to improve embedding density.
+
+    Rules:
+    - Only merges chunks from the **same section_path** — never mixes
+      content from different sections (that would corrupt attribution).
+    - Merged chunk keeps the first chunk's metadata; page_end expands.
+    - Nav links (previous_chunk_id / next_chunk_id) are rewritten after.
+    """
+    if not chunks:
+        return chunks
+
+    merged: List[dict] = []
+    current = dict(chunks[0])
+    current_tokens = int(current.get("tokens") or token_counter.count(current["text"]))
+
+    for nxt in chunks[1:]:
+        nxt_tokens = int(nxt.get("tokens") or token_counter.count(nxt["text"]))
+        same_section = current.get("section_path") == nxt.get("section_path")
+
+        if same_section and current_tokens + nxt_tokens <= max_tokens:
+            current["text"] = current["text"].rstrip() + "\n\n" + nxt["text"].lstrip()
+            current["tokens"] = current_tokens + nxt_tokens
+            current["page_end"] = nxt.get("page_end") or current["page_end"]
+            current_tokens = current["tokens"]
+        else:
+            merged.append(current)
+            current = dict(nxt)
+            current_tokens = nxt_tokens
+
+    merged.append(current)
+
+    # Rewrite nav links after merging
+    for i, chunk in enumerate(merged):
+        chunk["previous_chunk_id"] = merged[i - 1]["id"] if i > 0 else None
+        chunk["next_chunk_id"] = merged[i + 1]["id"] if i < len(merged) - 1 else None
+
+    return merged

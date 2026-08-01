@@ -1,36 +1,79 @@
-
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "docuweave"
-version = "0.1.2"
-description = "Layout-aware document parser for structured LLM-ready JSON"
+version = "0.2.0"
+description = "Layout-aware PDF chunking for production RAG pipelines"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-  { name="venkateswaraRao", email="mrvenky18@gmail.com" }
+  { name = "Venkateswara Rao Jannegorla", email = "mrvenky18@gmail.com" }
+]
+requires-python = ">=3.9"
+keywords = [
+  "pdf", "rag", "llm", "chunking", "document-parsing",
+  "langchain", "llamaindex", "chromadb", "qdrant", "pinecone",
+  "vector-database", "nlp", "information-retrieval"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Text Processing :: General",
+  "Typing :: Typed",
 ]
 dependencies = [
   "pydantic>=2.0",
   "pymupdf>=1.23",
-  "tiktoken>=0.5"
+  "tiktoken>=0.5",
 ]
-requires-python = ">=3.9"
-keywords = ["pdf", "llm", "rag", "document parsing", "nlp"]
-classifiers = [
-  "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent",
-]
+
+[project.urls]
+Homepage       = "https://github.com/venkateswararao18/docuweave"
+Repository     = "https://github.com/venkateswararao18/docuweave"
+Documentation  = "https://github.com/venkateswararao18/docuweave#readme"
+"Bug Tracker"  = "https://github.com/venkateswararao18/docuweave/issues"
 
 [project.scripts]
 docuweave = "docuweave.cli:main"
 
 [project.optional-dependencies]
-integrations = [
+langchain = [
   "langchain-core>=0.2",
-  "llama-index-core>=0.10"
+]
+llamaindex = [
+  "llama-index-core>=0.10",
+]
+haystack = [
+  "haystack-ai>=2.0",
+]
+qdrant = [
+  "qdrant-client>=1.7",
+]
+milvus = [
+  "pymilvus>=2.3",
+]
+all = [
+  "langchain-core>=0.2",
+  "llama-index-core>=0.10",
+  "haystack-ai>=2.0",
+  "qdrant-client>=1.7",
+  "pymilvus>=2.3",
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["docuweave*"]
+
+[tool.setuptools.package-data]
+docuweave = ["py.typed"]
