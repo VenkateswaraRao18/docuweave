@@ -17,15 +17,17 @@ Character-based splitters treat every paragraph the same. A chunk tagged `"secti
 
 Our benchmark on 390 PDFs across five domains (academic papers, legal, medical, technical, financial) with 3,927 question-answer pairs:
 
-| Chunker | R@1 | R@3 | R@5 |
-|---|---|---|---|
-| **DocuWeave** | **best** | **best** | **best** |
-| LangChain Recursive (full doc) | -23.4%* | -8.4%** | — |
-| Recursive (per-page) | -19.1%* | -6.2%** | — |
-| Naive (fixed-size) | -28.7%* | -11.3%** | — |
-| PdfPlumber | -21.3%* | -9.1%** | — |
+Numbers are relative to DocuWeave (390 PDFs, 3,927 QA pairs, bge-base-en-v1.5, paired t-test):
 
-\* p<0.01 · \*\* p<0.05 (paired t-test, bge-base-en-v1.5 embeddings)
+| Chunker | ΔR@1 | ΔR@3 |
+|---|---|---|
+| **DocuWeave** | — | — |
+| Recursive (per-page) | −23.4%\* | −8.4%\*\* |
+| Naive (fixed-size) | −28.7%\* | −11.3%\*\* |
+| PdfPlumber | −21.3%\* | −9.1%\*\* |
+| LangChain (full doc) | pending | pending |
+
+\* p<0.01 · \*\* p<0.05
 
 ---
 
@@ -307,7 +309,7 @@ If you use DocuWeave in research, please cite:
 @software{jannegorla2025docuweave,
   author  = {Jannegorla, Venkateswara Rao},
   title   = {{DocuWeave}: Layout-Aware PDF Chunking for RAG Pipelines},
-  year    = {2025},
+  year    = {2026},
   url     = {https://github.com/venkateswararao18/docuweave},
 }
 ```
