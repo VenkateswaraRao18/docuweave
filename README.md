@@ -3,31 +3,57 @@
 [![PyPI version](https://img.shields.io/pypi/v/docuweave)](https://pypi.org/project/docuweave/)
 [![Python](https://img.shields.io/pypi/pyversions/docuweave)](https://pypi.org/project/docuweave/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Typed](https://img.shields.io/badge/typing-PEP%20561-informational)](https://peps.python.org/pep-0561/)
+[![Dataset](https://img.shields.io/badge/🤗%20Dataset-mrjvenky18%2Fdocuweave--bench-yellow)](https://huggingface.co/datasets/mrjvenky18/docuweave-bench)
 
-PDF chunker that preserves document structure for RAG pipelines.
+**Layout-aware PDF chunker for production RAG pipelines.**
 
-Instead of splitting text by fixed character counts, DocuWeave reads font sizes and bold signals from the PDF to reconstruct the heading hierarchy, then cuts chunks at section boundaries. Each chunk knows which section it came from, what page it lives on, and what surrounds it.
+DocuWeave reads font sizes and bold signals from PDFs to reconstruct the heading hierarchy, then cuts chunks at section boundaries — never across them. Each chunk knows which section it came from, what page it lives on, and what surrounds it.
+
+---
+
+## Benchmark
+
+Evaluated on **417 PDFs · 6,100 QA pairs** across five domains (research, technical, legal, financial, medical) using `bge-base-en-v1.5` embeddings and FAISS retrieval. Full dataset on [HuggingFace](https://huggingface.co/datasets/mrjvenky18/docuweave-bench).
+
+| Chunker | R@1 | R@3 | R@5 | R@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|---|
+| **DocuWeave** | **0.286** | **0.448** | **0.515** | **0.591** | **0.384** | **0.434** |
+| Naive (fixed-size) | 0.198 | 0.350 | 0.435 | 0.565 | 0.300 | 0.396 |
+| Recursive (LangChain default) | 0.179 | 0.331 | 0.414 | 0.533 | 0.279 | 0.366 |
+| LangChain (full doc) | 0.148 | 0.271 | 0.340 | 0.438 | 0.229 | 0.294 |
+| Semantic | 0.118 | 0.202 | 0.252 | 0.334 | 0.175 | 0.274 |
+| PDFPlumber | 0.113 | 0.193 | 0.239 | 0.312 | 0.166 | 0.265 |
+
+DocuWeave ranks **#1 on every metric**. All differences are statistically significant (Wilcoxon signed-rank, p < 0.001).
+
+vs. LangChain Recursive (the most common RAG default): **+60% R@1**  
+vs. LangChain full-doc loader: **+94% R@1**  
+vs. Semantic chunking: **+142% R@1**
 
 ---
 
 ## Why not just split by characters?
 
-Character-based splitters treat every paragraph the same. A chunk tagged `"section_path": "3.2 Experimental Setup"` retrieves more precisely than one that happens to contain those words somewhere in the middle. When a retrieval miss happens, you also know *where* in the document to look.
+Character-based splitters cut at fixed budgets — a chunk can start mid-sentence in one section and end mid-sentence in another. When you ask "What is the token expiry time for API authentication?", the answer might be split across two chunks with different section contexts, and neither chunk's embedding points clearly at the answer.
 
-Our benchmark on 390 PDFs across five domains (academic papers, legal, medical, technical, financial) with 3,927 question-answer pairs:
+DocuWeave cuts at section boundaries. The entire answer lives in one self-contained chunk, its embedding is fully anchored to that topic, and retrieval finds it.
 
-Numbers are relative to DocuWeave (390 PDFs, 3,927 QA pairs, bge-base-en-v1.5, paired t-test):
+A chunk from DocuWeave:
 
-| Chunker | ΔR@1 | ΔR@3 |
-|---|---|---|
-| **DocuWeave** | — | — |
-| Recursive (per-page) | −23.4%\* | −8.4%\*\* |
-| Naive (fixed-size) | −28.7%\* | −11.3%\*\* |
-| PdfPlumber | −21.3%\* | −9.1%\*\* |
-| LangChain (full doc) | pending | pending |
-
-\* p<0.01 · \*\* p<0.05
+```json
+{
+  "id": "c_0014",
+  "text": "All API requests must include a valid OAuth 2.0 bearer token...",
+  "tokens": 487,
+  "section_title": "3.2 Authentication",
+  "section_path": "3 API Reference > 3.2 Authentication",
+  "section_level": 1,
+  "page_start": 4,
+  "page_end": 5,
+  "previous_chunk_id": "c_0013",
+  "next_chunk_id": "c_0015"
+}
+```
 
 ---
 
@@ -59,28 +85,11 @@ from docuweave import parse
 
 doc = parse("paper.pdf")
 
-# check how confident DocuWeave is about the heading structure
-print(doc.hierarchy_confidence)   # 0.0–1.0; below ~0.3 means scanned/image PDF
+# how confident DocuWeave is about the heading structure (0.0–1.0)
+print(doc.hierarchy_confidence)
 
 chunks = doc.to_chunks(max_tokens=512)
 doc.save_json("paper.json")
-```
-
-Each chunk looks like this:
-
-```json
-{
-  "id": "c_0014",
-  "text": "We train on 80% of the dataset and hold out...",
-  "tokens": 487,
-  "section_title": "Experimental Setup",
-  "section_path": "3 Methods > 3.2 Experimental Setup",
-  "section_level": 1,
-  "page_start": 4,
-  "page_end": 5,
-  "previous_chunk_id": "c_0013",
-  "next_chunk_id": "c_0015"
-}
 ```
 
 ---
@@ -94,25 +103,24 @@ docs = parse_directory(
     "pdfs/",
     pattern="**/*.pdf",
     min_confidence=0.3,   # skip scanned/image-only PDFs
-    on_error="skip",      # or "raise"
+    on_error="skip",
     progress=True,
 )
 
 for doc in docs:
     chunks = doc.to_chunks(max_tokens=512)
-    # do something with chunks
 ```
 
 ---
 
 ## LangChain
 
-DocuWeave ships a proper `BaseDocumentLoader` subclass, not just a converter:
-
 ```python
 from docuweave.integrations import DocuWeaveLoader
 
 loader = DocuWeaveLoader("paper.pdf", max_tokens=512)
+
+# load all at once
 docs = loader.load()
 
 # or stream one chunk at a time
@@ -125,7 +133,6 @@ Or convert existing chunks:
 
 ```python
 from docuweave.integrations import to_langchain_documents
-
 lc_docs = to_langchain_documents(chunks)
 ```
 
@@ -146,7 +153,6 @@ nodes = reader.load_data("paper.pdf")
 
 ```python
 from docuweave.integrations import to_haystack_documents
-
 haystack_docs = to_haystack_documents(chunks)
 ```
 
@@ -167,13 +173,6 @@ chunks = doc.to_chunks(max_tokens=512)
 client = chromadb.Client()
 collection = client.get_or_create_collection("papers")
 export_chroma(chunks, collection)
-```
-
-With your own embeddings:
-
-```python
-embeddings = your_model.encode([c["text"] for c in chunks]).tolist()
-export_chroma(chunks, collection, embeddings=embeddings)
 ```
 
 ### Qdrant
@@ -210,27 +209,17 @@ doc.to_faiss_jsonl("faiss_records.jsonl")
 
 ## CLI
 
-Single file:
-
 ```bash
+# single file
 docuweave paper.pdf -o paper.json --max-tokens 512
-```
 
-Batch mode:
-
-```bash
+# batch mode
 docuweave --directory pdfs/ --output-dir out/ --min-confidence 0.3
-```
 
-Skip low-quality PDFs silently:
+# skip low-quality PDFs silently
+docuweave --directory pdfs/ --output-dir out/ --min-confidence 0.3 --on-error skip
 
-```bash
-docuweave --directory pdfs/ --output-dir out/ --min-confidence 0.3 --on-error skip --no-progress
-```
-
-Vector export from CLI (prints Python snippet to wire up your client):
-
-```bash
+# vector export
 docuweave paper.pdf --export chroma
 docuweave paper.pdf --export qdrant
 docuweave paper.pdf --export faiss-jsonl -o records.jsonl
@@ -240,11 +229,11 @@ docuweave paper.pdf --export faiss-jsonl -o records.jsonl
 
 ## `hierarchy_confidence`
 
-Every parsed document has a `hierarchy_confidence` score between 0.0 and 1.0. It measures how much usable heading structure DocuWeave found:
+Every parsed document has a score between 0.0 and 1.0:
 
 - **≥ 0.6** — clear multi-level heading structure; chunking will be accurate
-- **0.3–0.6** — partial structure; DocuWeave still does better than flat splitting
-- **< 0.3** — likely scanned, image-heavy, or a single-column document with no heading signals
+- **0.3–0.6** — partial structure; DocuWeave still outperforms flat splitting
+- **< 0.3** — likely scanned, image-heavy, or uniform-font document
 
 Use `min_confidence` in `parse_directory()` to filter these out automatically.
 
@@ -255,62 +244,51 @@ Use `min_confidence` in `parse_directory()` to filter these out automatically.
 ```python
 doc = parse("paper.pdf")
 
-doc.num_pages              # int
-len(doc)                   # chunk count (after to_chunks())
-repr(doc)                  # DocuWeaveDocument(file='paper.pdf', pages=12, sections=8, chunks=24, confidence=0.71)
-doc.iter_chunks(max_tokens=512)   # iterator, same as to_chunks() but lazy
-doc.to_json()              # full dict including hierarchy_confidence
+doc.num_pages                       # int
+len(doc)                            # chunk count (after to_chunks())
+repr(doc)                           # DocuWeaveDocument(file='paper.pdf', pages=12, sections=8, chunks=24, confidence=0.71)
+doc.iter_chunks(max_tokens=512)     # lazy iterator
+doc.to_json()                       # full dict including hierarchy_confidence
 ```
 
 ---
 
 ## How it works
 
-1. **Parse** — PyMuPDF extracts text blocks with font size, bold flag, and bounding box per span.
-2. **Score headings** — each text block gets a score based on font size relative to the page median, bold, uppercase, length, and common heading patterns. Blocks above threshold become `HEADING` nodes.
-3. **Build hierarchy** — headings are organized into a tree by font size. Paragraphs following a heading belong to that section.
-4. **Clean blocks** — bullet continuations are merged, list items are grouped, noise from headers/footers is removed.
-5. **Chunk** — sections are sliced into token-bounded chunks. Small chunks are merged *within* the same section only (never across section boundaries).
-6. **Export** — chunks carry `section_path`, page span, and linked-list pointers so downstream retrieval can do context expansion.
+1. **Block extraction** — PyMuPDF extracts text spans with font size, bold flag, and bounding box.
+2. **Heading scoring** — each block gets a score based on font size vs. page median, bold, uppercase, length, and numbered-heading patterns. Blocks scoring ≥ 3 become headings.
+3. **Hierarchy construction** — headings are stacked into a tree by font size. Paragraphs following a heading belong to that section.
+4. **Block cleaning** — bullet continuations are merged, list items are grouped, headers/footers are removed.
+5. **Chunking** — sections are sliced into token-bounded chunks (default 512 tokens). Small chunks merge *within* the same section only — never across section boundaries.
+6. **Export** — chunks carry `section_path`, page span, and linked-list pointers for context expansion.
 
 ---
 
 ## Known limitations
 
-- Scanned PDFs (image-only) return no text. Check `hierarchy_confidence` and filter with `min_confidence`.
-- Multi-column layouts occasionally mis-order text blocks (PyMuPDF limitation).
+- Scanned PDFs (image-only) return no text. Check `hierarchy_confidence`.
+- Multi-column layouts occasionally mis-order blocks (PyMuPDF limitation).
 - Tables are treated as text blocks, not structured data.
-- DOCX and HTML are not supported yet.
+- DOCX and HTML not yet supported.
 
 ---
 
-## Running tests
+## Dataset
 
-```bash
-pip install -e ".[dev]"
-python -m unittest discover tests/ -v
-```
+The benchmark dataset (417 PDFs, 6,100 QA pairs) is publicly available:
 
----
-
-## Contributing
-
-Bug reports are most useful with a minimal PDF that reproduces the issue. Open a GitHub issue and attach the file (or a public link to it).
-
-Pull requests are welcome. The areas with the most room to improve are heading detection on noisy PDFs and table extraction.
+**HuggingFace:** [mrjvenky18/docuweave-bench](https://huggingface.co/datasets/mrjvenky18/docuweave-bench)
 
 ---
 
 ## Citation
 
-If you use DocuWeave in research, please cite:
-
 ```bibtex
-@software{jannegorla2025docuweave,
+@article{jannegorla2026docuweave,
+  title   = {DocuWeave: Layout-Aware {PDF} Chunking for Retrieval-Augmented Generation},
   author  = {Jannegorla, Venkateswara Rao},
-  title   = {{DocuWeave}: Layout-Aware PDF Chunking for RAG Pipelines},
+  journal = {arXiv preprint},
   year    = {2026},
-  url     = {https://github.com/venkateswararao18/docuweave},
 }
 ```
 

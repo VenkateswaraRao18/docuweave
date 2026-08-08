@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List
+
+# Resolve BaseLoader at import time so DocuWeaveLoader actually inherits from it
+# when langchain_core is installed. Falls back to object so the class is always
+# importable without langchain.
+try:
+    from langchain_core.document_loaders import BaseLoader as _LC_Base  # type: ignore[import]
+except ImportError:
+    _LC_Base = object  # type: ignore[assignment,misc]
 
 
 def _chunk_to_metadata(chunk: Dict[str, Any]) -> Dict[str, Any]:
@@ -32,51 +39,55 @@ def to_langchain_documents(chunks: List[Dict[str, Any]]) -> List[Any]:
 
 
 # ─────────────────────────────────────────────────────────────
-# LangChain — BaseLoader  (drop-in for any LangChain loader)
+# LangChain — BaseLoader subclass
 # ─────────────────────────────────────────────────────────────
 
-class DocuWeaveLoader:
+class DocuWeaveLoader(_LC_Base):  # type: ignore[misc]
     """
-    LangChain-compatible document loader for DocuWeave.
+    Load a PDF with DocuWeave and return layout-aware LangChain Documents.
 
-    Use it anywhere LangChain expects a ``BaseLoader``::
+    Inherits from ``langchain_core.document_loaders.BaseLoader`` when
+    langchain_core is installed, so it works as a drop-in anywhere LangChain
+    expects a loader.
+
+    Example::
 
         from docuweave.integrations import DocuWeaveLoader
 
         loader = DocuWeaveLoader("paper.pdf", max_tokens=512)
-        docs   = loader.load()                     # List[LangChain Document]
+        docs   = loader.load()
 
-        # Stream one chunk at a time
         for doc in loader.lazy_load():
             print(doc.page_content[:80])
-
-    Works with LangChain's ``RecursiveCharacterTextSplitter``,
-    ``VectorstoreIndexCreator``, and every pipeline that accepts loaders.
+            print(doc.metadata["section_path"])
     """
 
-    def __init__(self, file_path: str, max_tokens: int = 512, model_name: str = "gpt-4"):
+    def __init__(self, file_path: str, max_tokens: int = 512) -> None:
         self.file_path  = file_path
         self.max_tokens = max_tokens
-        self.model_name = model_name
-
-    # Try to inherit from BaseLoader if langchain_core is present.
-    # We patch the MRO at class-definition time so the class is always
-    # importable even without langchain installed.
-    try:
-        from langchain_core.document_loaders import BaseLoader as _LC_Base  # type: ignore
-        _lc_base = _LC_Base
-    except ImportError:
-        _lc_base = object  # type: ignore
-
-    def load(self) -> List[Any]:
-        from docuweave.api import parse
-        doc = parse(self.file_path)
-        chunks = doc.to_chunks(max_tokens=self.max_tokens, model_name=self.model_name)
-        return to_langchain_documents(chunks)
 
     def lazy_load(self) -> Iterator[Any]:
-        for doc in self.load():
-            yield doc
+        """Yield one LangChain Document per DocuWeave chunk."""
+        from docuweave.api import parse
+        try:
+            from langchain_core.documents import Document as LC
+            def _make(c: Dict[str, Any], confidence: float) -> Any:
+                meta = _chunk_to_metadata(c)
+                meta["hierarchy_confidence"] = confidence
+                return LC(page_content=c.get("text", ""), metadata=meta)
+        except ImportError:
+            def _make(c: Dict[str, Any], confidence: float) -> Any:  # type: ignore[misc]
+                meta = _chunk_to_metadata(c)
+                meta["hierarchy_confidence"] = confidence
+                return {"page_content": c.get("text", ""), "metadata": meta}
+
+        doc = parse(self.file_path)
+        confidence = doc.hierarchy_confidence
+        for chunk in doc.iter_chunks(max_tokens=self.max_tokens):
+            yield _make(chunk, confidence)
+
+    def load(self) -> List[Any]:
+        return list(self.lazy_load())
 
 
 # ─────────────────────────────────────────────────────────────
